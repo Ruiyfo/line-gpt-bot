@@ -19,15 +19,15 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 app = Flask(__name__)
 
-# 👤 ホワイトリスト（あとで戻してOK）
+# 📝 ホワイトリスト（大くんのIDをここに入れる）
 WHITELIST_USER_IDS = {"Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
 authorized_groups = set()
 
-# 日本語かどうか判定（ひらがな or カタカナ）
+# ひらがな・カタカナが含まれていれば日本語と判定
 def is_japanese(text):
     return bool(re.search(r'[ぁ-んァ-ン]', text))
 
-# 翻訳（GPT使用）
+# GPT翻訳処理（温度0.7）
 def translate_with_gpt(text, target_lang):
     prompt = f"次の文章を{target_lang}に自然な口調で翻訳してください：\n{text}"
     response = openai.ChatCompletion.create(
@@ -58,13 +58,14 @@ def handle_message(event):
     group_id = getattr(event.source, 'group_id', None)
     text = event.message.text.strip()
 
+    # 🔍 デバッグログ
     print(f"発言者のID: {user_id}")
     print(f"受信メッセージ: {text}")
 
     if not group_id:
         return
 
-    # 🔧 一時的にホワイトリストチェックをコメントアウト（ID取得のため）
+    # 🛠️ 一時的にホワイトリスト制限を無効化
     # if group_id not in authorized_groups:
     #     if user_id in WHITELIST_USER_IDS:
     #         authorized_groups.add(group_id)
@@ -72,7 +73,7 @@ def handle_message(event):
     #     else:
     #         return
 
-    # GPTちゃん呼び出し対応
+    # 🧠 GPTちゃん呼び出し処理
     if text.startswith("@GPTちゃん"):
         question = text.replace("@GPTちゃん", "").strip()
         if not question:
@@ -81,7 +82,7 @@ def handle_message(event):
             model="gpt-3.5-turbo",
             temperature=0.7,
             messages=[
-                {"role": "system", "content": "親切でちょっとおちゃめなアシスタントです。"},
+                {"role": "system", "content": "親切でおちゃめなアシスタントです。"},
                 {"role": "user", "content": question}
             ]
         )
@@ -89,7 +90,7 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         return
 
-    # 翻訳処理（日本語↔ロシア語）
+    # 🔄 翻訳処理（日本語↔ロシア語）
     if is_japanese(text):
         translated = translate_with_gpt(text, "ロシア語")
     else:
@@ -97,7 +98,7 @@ def handle_message(event):
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=translated))
 
-# ✅ Render用ポート指定（ローカルでも動く）
+# ✅ Renderでもポート検出されるように明示指定！
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
