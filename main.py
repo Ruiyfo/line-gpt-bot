@@ -77,6 +77,11 @@ def handle_message(event):
     print(f"👤 user_id: {user_id}")
     print(f"👥 source_type: {source_type}")
     print(f"💬 message: {text}")
+    
+    # ✅ 個人チャットなら即スルー
+    if source_type == "user":
+        print("⛔ 個人チャットなので無視します。")
+        return
 
     # ✅ グループチャット：最初にホワイトリストユーザーが発言したら許可
     if source_type == "group":
