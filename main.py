@@ -21,7 +21,7 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 openai.api_key = OPENAI_API_KEY
 
 # ホワイトリスト（LINEユーザーID）
-WHITELIST_USER_IDS = {"Uxxxxxxxxxxxxxxxxxxxx"}  # 大くんのUser IDをここに入れてね！
+WHITELIST_USER_IDS = {"U61787e7f07a6585c8c4c8f31b7edd734"}  # 大くんのUser IDをここに入れてね！
 
 # 言語判別（かな文字があれば日本語）
 def is_japanese(text):
