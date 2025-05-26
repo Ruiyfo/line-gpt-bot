@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 import re
 
-# 環境変数読み込み
+# .envから環境変数読み込み
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -19,15 +19,15 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 app = Flask(__name__)
 
-# 📝 ホワイトリスト（大くんのIDをここに入れる）
-WHITELIST_USER_IDS = {"Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+# ✅ 大くんのLINEユーザーIDをここに入れる！
+WHITELIST_USER_IDS = {"U61787e7f07a6585c8c4c8f31b7edd734"}  # ←ここを実際のIDに変更してね！
 authorized_groups = set()
 
-# ひらがな・カタカナが含まれていれば日本語と判定
+# 日本語判定（ひらがな or カタカナ）
 def is_japanese(text):
     return bool(re.search(r'[ぁ-んァ-ン]', text))
 
-# GPT翻訳処理（温度0.7）
+# GPT翻訳処理
 def translate_with_gpt(text, target_lang):
     prompt = f"次の文章を{target_lang}に自然な口調で翻訳してください：\n{text}"
     response = openai.ChatCompletion.create(
@@ -58,22 +58,22 @@ def handle_message(event):
     group_id = getattr(event.source, 'group_id', None)
     text = event.message.text.strip()
 
-    # 🔍 デバッグログ
     print(f"発言者のID: {user_id}")
     print(f"受信メッセージ: {text}")
 
     if not group_id:
         return
 
-    # 🛠️ 一時的にホワイトリスト制限を無効化
-    # if group_id not in authorized_groups:
-    #     if user_id in WHITELIST_USER_IDS:
-    #         authorized_groups.add(group_id)
-    #         print(f"グループ {group_id} を許可しました")
-    #     else:
-    #         return
+    # ✅ ホワイトリスト制限：許可された人がグループにいれば有効
+    if group_id not in authorized_groups:
+        if user_id in WHITELIST_USER_IDS:
+            authorized_groups.add(group_id)
+            print(f"グループ {group_id} を許可しました")
+        else:
+            print("ホワイトリスト外ユーザーからの発言。無視します。")
+            return
 
-    # 🧠 GPTちゃん呼び出し処理
+    # GPTちゃん呼び出し処理
     if text.startswith("@GPTちゃん"):
         question = text.replace("@GPTちゃん", "").strip()
         if not question:
@@ -90,7 +90,7 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         return
 
-    # 🔄 翻訳処理（日本語↔ロシア語）
+    # 翻訳処理（日本語↔ロシア語）
     if is_japanese(text):
         translated = translate_with_gpt(text, "ロシア語")
     else:
@@ -98,7 +98,7 @@ def handle_message(event):
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=translated))
 
-# ✅ Renderでもポート検出されるように明示指定！
+# ✅ ポート明示（Render向け）
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
