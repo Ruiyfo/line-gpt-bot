@@ -1,12 +1,12 @@
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, SourceGroup
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import openai
 import os
 from dotenv import load_dotenv
 import re
 
-# .envから環境変数を読み込む
+# 環境変数読み込み
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -19,17 +19,15 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 app = Flask(__name__)
 
-# ホワイトリスト（あなたのLINEユーザーIDをここに入れる）
+# 👤 ホワイトリスト（あとで戻してOK）
 WHITELIST_USER_IDS = {"Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
-
-# 許可済みグループ（メモリ内で保持）
 authorized_groups = set()
 
-# 日本語を含むか判定（ひらがな or カタカナ）
+# 日本語かどうか判定（ひらがな or カタカナ）
 def is_japanese(text):
     return bool(re.search(r'[ぁ-んァ-ン]', text))
 
-# GPT翻訳（温度 0.7、ターゲット言語は引数）
+# 翻訳（GPT使用）
 def translate_with_gpt(text, target_lang):
     prompt = f"次の文章を{target_lang}に自然な口調で翻訳してください：\n{text}"
     response = openai.ChatCompletion.create(
@@ -60,23 +58,21 @@ def handle_message(event):
     group_id = getattr(event.source, 'group_id', None)
     text = event.message.text.strip()
 
-    # 👀 発言者IDを表示（Renderログで確認用！）
     print(f"発言者のID: {user_id}")
+    print(f"受信メッセージ: {text}")
 
-    # グループ以外は無視
     if not group_id:
         return
 
-    # ✅ ↓↓↓ 一時的にホワイトリストチェックを無効化（コメントアウト） ↓↓↓
+    # 🔧 一時的にホワイトリストチェックをコメントアウト（ID取得のため）
     # if group_id not in authorized_groups:
     #     if user_id in WHITELIST_USER_IDS:
     #         authorized_groups.add(group_id)
     #         print(f"グループ {group_id} を許可しました")
     #     else:
     #         return
-    # ✅ ↑↑↑ 後で戻してね！ ↑↑↑
 
-    # GPTちゃん呼び出し処理
+    # GPTちゃん呼び出し対応
     if text.startswith("@GPTちゃん"):
         question = text.replace("@GPTちゃん", "").strip()
         if not question:
@@ -85,7 +81,7 @@ def handle_message(event):
             model="gpt-3.5-turbo",
             temperature=0.7,
             messages=[
-                {"role": "system", "content": "親切でおちゃめなアシスタントです。"},
+                {"role": "system", "content": "親切でちょっとおちゃめなアシスタントです。"},
                 {"role": "user", "content": question}
             ]
         )
@@ -93,7 +89,7 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         return
 
-    # 翻訳（日本語↔ロシア語）
+    # 翻訳処理（日本語↔ロシア語）
     if is_japanese(text):
         translated = translate_with_gpt(text, "ロシア語")
     else:
@@ -101,5 +97,7 @@ def handle_message(event):
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=translated))
 
+# ✅ Render用ポート指定（ローカルでも動く）
 if __name__ == "__main__":
-    app.run(port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
