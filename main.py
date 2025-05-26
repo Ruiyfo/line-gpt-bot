@@ -7,30 +7,33 @@ import os
 from dotenv import load_dotenv
 import re
 
-# .envから環境変数を読み込む
+# ✅ ① 環境変数を読み込む
 load_dotenv()
 
-print(f"LINE_CHANNEL_SECRET: {LINE_CHANNEL_SECRET}")
-
+# ✅ ② 読み込んだ環境変数をPythonに代入
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 
+# ✅ ③ デバッグ用ログ（あとで削除してもOK）
+print(f"LINE_CHANNEL_SECRET: {LINE_CHANNEL_SECRET}")
+
+# ✅ ④ LINEとGPT初期化
 openai.api_key = OPENAI_API_KEY
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 app = Flask(__name__)
 
-# ✅ 大くんのユーザーID（Uから始まる）をここに入れてね！
+# ✅ ホワイトリスト（大くんのLINE IDに差し替えてね！）
 WHITELIST_USER_IDS = {"U61787e7f07a6585c8c4c8f31b7edd734"}
 authorized_groups = set()
 
-# 日本語を含むか判定
+# ✅ 日本語判定（ひらがなorカタカナ）
 def is_japanese(text):
     return bool(re.search(r'[ぁ-んァ-ン]', text))
 
-# 翻訳処理（GPT使用）
+# ✅ GPT翻訳関数
 def translate_with_gpt(text, target_lang):
     prompt = f"次の文章を{target_lang}に自然な口調で翻訳してください：\n{text}"
     response = openai.ChatCompletion.create(
@@ -42,13 +45,12 @@ def translate_with_gpt(text, target_lang):
     )
     return response.choices[0].message.content.strip()
 
-# ✅ Webhookエンドポイント
+# ✅ LINE Webhookエンドポイント
 @app.route("/callback", methods=["POST"])
 def callback():
     signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
 
-    # 🔍 デバッグ用ログ出力
     print("===== LINEからのリクエスト受信 =====")
     print("署名:", signature)
     print("ボディ:", body)
@@ -59,12 +61,12 @@ def callback():
         print("⚠️ 署名が不正です！LINE_CHANNEL_SECRETを確認してください")
         abort(400)
     except Exception as e:
-        print("⚠️ 署名以外のエラー:", str(e))
+        print("⚠️ その他のエラー:", str(e))
         abort(400)
 
     return "OK"
 
-# ✅ メッセージ処理
+# ✅ メッセージハンドラ
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_id = event.source.user_id
@@ -77,7 +79,7 @@ def handle_message(event):
     if not group_id:
         return
 
-    # ✅ ホワイトリスト制限（グループ内に許可ユーザーがいたら有効）
+    # ✅ ホワイトリストチェック
     if group_id not in authorized_groups:
         if user_id in WHITELIST_USER_IDS:
             authorized_groups.add(group_id)
@@ -86,7 +88,7 @@ def handle_message(event):
             print("⛔ ホワイトリストにいないユーザーのため無視します")
             return
 
-    # ✅ @GPTちゃんでChatGPT返答
+    # ✅ @GPTちゃん 呼び出し
     if text.startswith("@GPTちゃん"):
         question = text.replace("@GPTちゃん", "").strip()
         if not question:
@@ -103,7 +105,7 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
         return
 
-    # ✅ 翻訳（日本語↔ロシア語）
+    # ✅ 翻訳処理（日本語↔ロシア語）
     if is_japanese(text):
         translated = translate_with_gpt(text, "ロシア語")
     else:
@@ -111,7 +113,7 @@ def handle_message(event):
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=translated))
 
-# ✅ ポート指定（Render対応）
+# ✅ Render対応：ポートを明示指定
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
