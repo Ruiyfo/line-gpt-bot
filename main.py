@@ -11,7 +11,6 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# 環境変数の取得
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -20,19 +19,21 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 openai.api_key = OPENAI_API_KEY
 
-# ✅ ホワイトリスト（最初にBotを有効にできるuser_id）
 WHITELIST_USER_IDS = {
     "U61787e7f07a6585c8c4c8f31b7edd734"  # 大くんのLINE user_id
 }
 
-# ✅ 許可済みグループの記憶（メモリ上／一時的）
+# ✅ ファイルから許可済みグループIDを読み込み
 ALLOWED_GROUP_IDS = set()
+if os.path.exists("allowed_groups.txt"):
+    with open("allowed_groups.txt", "r") as f:
+        ALLOWED_GROUP_IDS = set(line.strip() for line in f if line.strip())
 
-# ✅ 日本語判定（かな文字が含まれていれば日本語）
+# ✅ 日本語判定
 def is_japanese(text):
     return re.search(r'[ぁ-んァ-ン]', text) is not None
 
-# ✅ 翻訳（日本語⇔ロシア語）
+# ✅ 翻訳処理
 def translate_with_gpt(text, source_lang):
     if source_lang == 'ja':
         prompt = f"以下の日本語をロシア語に自然な文章で翻訳してください：\n{text}"
@@ -55,48 +56,35 @@ def callback():
     signature = request.headers.get("X-Line-Signature")
     body = request.get_data(as_text=True)
 
-    print("📩 Webhook受信")
-    print("📨 body:", body)
-
     try:
         handler.handle(body, signature)
-    except Exception as e:
-        print("🚨 エラー:", e)
+    except Exception:
         abort(400)
 
     return "OK"
 
-# ✅ メッセージイベント処理
+# ✅ メッセージ処理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_id = event.source.user_id
-    source_type = event.source.type  # "user" または "group"
+    source_type = event.source.type
     group_id = getattr(event.source, "group_id", None)
     text = event.message.text.strip()
 
-    print(f"👤 user_id: {user_id}")
-    print(f"👥 source_type: {source_type}")
-    print(f"💬 message: {text}")
-    
-    # ✅ 個人チャットなら即スルー
+    # 個人チャットは無視
     if source_type == "user":
-        print("⛔ 個人チャットなので無視します。")
         return
 
-    # ✅ グループチャット：最初にホワイトリストユーザーが発言したら許可
-    if source_type == "group":
-        if group_id in ALLOWED_GROUP_IDS:
-            print(f"✅ 許可済みグループ {group_id}。処理続行。")
-        elif user_id in WHITELIST_USER_IDS:
-            print(f"✅ ホワイトリストユーザー {user_id} の発言により、グループ {group_id} を許可！")
+    # グループ許可チェック
+    if group_id not in ALLOWED_GROUP_IDS:
+        if user_id in WHITELIST_USER_IDS:
             ALLOWED_GROUP_IDS.add(group_id)
+            with open("allowed_groups.txt", "a") as f:
+                f.write(f"{group_id}\n")
         else:
-            print(f"⛔ グループ {group_id} の発言者 {user_id} は許可されていません。")
             return
-    else:
-        print("✅ 個人チャットなのでホワイトリストチェック不要。")
 
-    # ✅ @GPTちゃん応答
+    # @GPTちゃん → ChatGPT応答
     if text.startswith("@GPTちゃん"):
         question = text.replace("@GPTちゃん", "").strip()
         response = openai.ChatCompletion.create(
@@ -111,12 +99,9 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=answer))
         return
 
-    # ✅ 翻訳処理（日本語→ロシア語／ロシア語→日本語）
-    if is_japanese(text):
-        translated = translate_with_gpt(text, source_lang='ja')
-    else:
-        translated = translate_with_gpt(text, source_lang='ru')
-
+    # 翻訳処理
+    source_lang = 'ja' if is_japanese(text) else 'ru'
+    translated = translate_with_gpt(text, source_lang)
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=translated))
 
 # ✅ Flaskアプリ起動
